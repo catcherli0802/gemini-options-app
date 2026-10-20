@@ -25,9 +25,9 @@ if ticker:
     if rec is None:
         st.error(f"Strategy Scan Failed: {status_msg}")
     else:
-        # 1. Render Top Level Metric Dashboard Cards
+        # 1. Render Top Level Metric Dashboard Cards (Expanded to 6 layout slots)
         st.markdown("### 📊 Market Layout Overview")
-        m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
+        m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
         
         with m_col1:
             st.metric(label=f"Current {ticker} Spot Price", value=f"${rec['spot_price']:.2f}")
@@ -40,6 +40,10 @@ if ticker:
             st.metric(label="Target Implied Volatility (IV)", value=f"{iv_percentage:.1f}%")
         with m_col5:
             st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}")
+        with m_col6:
+            # Displays the dynamic risk-free rate fetched from rates.py
+            rate_percentage = rec['risk_free_rate'] * 100
+            st.metric(label="Risk-Free Rate (r)", value=f"{rate_percentage:.3f}%", help="Live macro baseline pulled directly from the 13-Week US Treasury Bill yield (^IRX).")
             
         # 2. Highlighted Recommendation Breakdown Box
         st.markdown("---")
@@ -52,7 +56,7 @@ if ticker:
         * Sell **{rec['num_contracts']}** of the **{rec['expiry']}** expiration **${rec['strike']:.2f} Call Option** contracts.
         * **Current Market Premium:** Bid: **${rec['bid']:.2f}** | Ask: **${rec['ask']:.2f}**
         * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly.
-        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
+        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%) using a baseline interest rate of {rate_percentage:.3f}%*.
         """)
         
         # 3. Dynamic Time Decay Visual Graph
