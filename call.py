@@ -5,7 +5,7 @@ from scipy.stats import norm
 from datetime import datetime, timedelta
 
 def find_target_expiry(stock, target_days=28):
-    """Finds the market expiration date closest to the target days (4 weeks)."""
+    """Finds the market expiration date closest to the target days."""
     if not hasattr(stock, 'options') or not stock.options:
         return None, 0
         
@@ -46,9 +46,13 @@ def calculate_approx_delta(spot, strike, iv, dte):
     delta = norm.cdf(d1)
     return float(delta)
 
-def get_covered_call_recommendation(ticker):
-    """Scans the 4-week chain and finds the strike closest to a 30% probability (0.30 Delta)."""
+def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4):
+    """Scans the chain and finds the strike closest to a user probability (Delta) target and week structure."""
     stock = yf.Ticker(ticker)
+    
+    # Convert inputs to calculation units
+    target_delta = target_prob / 100.0
+    target_days = target_weeks * 7
     
     # 1. Safely extract current spot price
     try:
@@ -62,8 +66,8 @@ def get_covered_call_recommendation(ticker):
     if spot_price <= 0:
         return None, f"Invalid spot price retrieved for {ticker}.", pd.DataFrame()
 
-    # 2. Locate expiration closest to 4 weeks (28 days)
-    expiry_date, dte = find_target_expiry(stock, target_days=28)
+    # 2. Locate expiration closest to requested target weeks
+    expiry_date, dte = find_target_expiry(stock, target_days=target_days)
     if not expiry_date:
         return None, "No valid options expiration dates found.", pd.DataFrame()
         
@@ -92,8 +96,8 @@ def get_covered_call_recommendation(ticker):
             
         otm_calls['calculated_delta'] = deltas
         
-        # 5. Locate the contract closest to a 30% probability target (0.30 Delta)
-        otm_calls['delta_distance'] = (otm_calls['calculated_delta'] - 0.30).abs()
+        # 5. Locate the contract closest to a user probability target (target_delta)
+        otm_calls['delta_distance'] = (otm_calls['calculated_delta'] - target_delta).abs()
         best_match_idx = otm_calls['delta_distance'].idxmin()
         recommendation = otm_calls.loc[best_match_idx].to_dict()
         
@@ -101,6 +105,7 @@ def get_covered_call_recommendation(ticker):
         recommendation['expiry'] = expiry_date
         recommendation['dte'] = dte
         recommendation['spot_price'] = spot_price
+        recommendation['target_prob'] = target_prob
         
         # Clean dataframe up for presentation sorting
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
