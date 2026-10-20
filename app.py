@@ -56,8 +56,8 @@ if ticker:
         """)
         
         # 3. Dynamic Time Decay Visual Graph
-        st.markdown("### 📉 Theoretical Option Value vs. Time to Expiration")
-        st.write("This interactive chart maps how the recommended option contract's premium drops as time decays, assuming the stock price remains constant.")
+        st.markdown("### 📉 Theoretical Option Value vs. Calendar Date Timeline")
+        st.write("This interactive chart maps how the recommended option contract's premium decays day-by-day until expiration.")
         
         decay_df = get_time_decay_curve(
             spot=rec['spot_price'], 
