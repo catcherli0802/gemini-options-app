@@ -26,7 +26,7 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    # FIX: Extract the datetime object from the first index of the tuple (x[0])
+    # Extract the datetime object from the first index of the tuple (x[0])
     expiries.sort(key=lambda x: abs((x[0] - target_date).days))
     closest_dt, closest_str = expiries[0]
     
@@ -122,7 +122,6 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
             
         deltas = []
         for _, row in otm_calls.iterrows():
-            # Pass the extracted live risk free rate into the loop calculations
             d = calculate_approx_delta(spot_price, row['strike'], row['impliedVolatility'], dte, r)
             deltas.append(d)
             
@@ -138,6 +137,7 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         recommendation['spot_price'] = spot_price
         recommendation['target_prob'] = target_prob
         recommendation['num_contracts'] = num_contracts
+        recommendation['risk_free_rate'] = r  # <-- Passed to dictionary
         
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
             columns={'calculated_delta': 'Estimated Delta'}
