@@ -25,8 +25,8 @@ def find_target_expiry(stock, target_days=28):
         return None, 0
         
     # Sort by absolute distance to our target date
-    expiries.sort(key=lambda x: abs((x[0] - target_date).days))
-    closest_dt, closest_str = expiries[0]
+    expiries.sort(key=lambda x: abs((x - target_date).days))
+    closest_dt, closest_str = expiries
     
     # Calculate exact Days to Expiration (DTE)
     dte = (closest_dt - today).days
@@ -100,6 +100,9 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4):
         otm_calls['delta_distance'] = (otm_calls['calculated_delta'] - target_delta).abs()
         best_match_idx = otm_calls['delta_distance'].idxmin()
         recommendation = otm_calls.loc[best_match_idx].to_dict()
+        
+        # 🌟 NEW CALCULATION: Upfront cash premium collected per 1 contract (Bid * 100 shares)
+        recommendation['total_premium'] = recommendation['bid'] * 100.0
         
         # Add metadata variables to recommendation dictionary
         recommendation['expiry'] = expiry_date
