@@ -3,16 +3,23 @@ import yfinance as yf
 def get_current_risk_free_rate(target_weeks=4, fallback_rate=0.045):
     """
     Selects a Treasury yield ticker based on the chosen options timeline 
-    to properly reflect the term structure of interest rates (Yield Curve).
+    and returns a tuple of (decimal_rate, label_string).
     """
-    # Select index ticker matching the appropriate duration bucket
-    if target_weeks <= 6:
-        ticker = "^IRX"    # 13-Week / 3-Month T-Bill Index
-    elif target_weeks <= 30:
-        ticker = "^IRX"    # Fallback/standard loop; or use a 6-month tracking metric if available
+    # 1. Map target weeks to the closest standardized Treasury duration asset
+    if target_weeks <= 2:
+        ticker = "^IRX"  # Standard fallback to 13-week index for immediate hyper-short positions
+        label = "1-Month T-Bill (Approx via ^IRX)"
+    elif target_weeks <= 10:
+        ticker = "^IRX"  # 13-Week / 3-Month Treasury Bill Index
+        label = "3-Month T-Bill (^IRX)"
+    elif target_weeks <= 36:
+        ticker = "^IRX"  # 26-Week / 6-Month baseline proxy
+        label = "6-Month T-Bill (Curve Proxy)"
     else:
-        ticker = "^FVX"    # 5-Year Treasury Note Index (for long leaps positions)
+        ticker = "^FVX"  # 5-Year Treasury Note Index for long LEAPS duration buckets
+        label = "1-Year+ Bond Proxy (^FVX)"
 
+    # 2. Query market engine data
     try:
         irx = yf.Ticker(ticker)
         raw_yield = irx.fast_info.get('lastPrice')
@@ -23,10 +30,9 @@ def get_current_risk_free_rate(target_weeks=4, fallback_rate=0.045):
                 raw_yield = hist['Close'].iloc[-1]
                 
         if raw_yield and raw_yield > 0:
-            # Most CBOE index values return as a percentage (e.g. 4.07). Convert to 0.0407
-            return float(raw_yield / 100.0)
+            return float(raw_yield / 100.0), label
             
     except Exception:
         pass
         
-    return fallback_rate
+    return fallback_rate, f"Fallback Default ({fallback_rate*100:.1f}%)"
