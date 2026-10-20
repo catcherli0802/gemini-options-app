@@ -42,14 +42,14 @@ if ticker:
             st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}")
         with m_col6:
             rate_percentage = rec['risk_free_rate'] * 100
-            # FIX: Displays the exact duration source label underneath the interest rate percentage card
+            # FIX: Moved the custom text out of 'delta' to resolve the StreamlitValueError
             st.metric(
                 label="Risk-Free Rate (r)", 
-                value=f"{rate_percentage:.3f}%", 
-                delta=rec['rate_label'], 
-                delta_color="neutral",
-                help="Live macroeconomic baseline tracking corresponding asset lengths across the US sovereign yield curve."
+                value=f"{rate_percentage:.3f}%",
+                help=f"Active Curve Reference: {rec['rate_label']}. Live macroeconomic baseline tracking corresponding asset lengths across the US sovereign yield curve."
             )
+            # Displaying the dynamic maturity source subtitle clearly underneath the card block
+            st.caption(f"📋 {rec['rate_label']}")
             
         # 2. Highlighted Recommendation Breakdown Box
         st.markdown("---")
