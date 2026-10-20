@@ -24,7 +24,7 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    # 🌟 FIXED: We unpack the tuple (dt, date_str) using x[0] to isolate the datetime object
+    # Sort by absolute distance to our target date
     expiries.sort(key=lambda x: abs((x[0] - target_date).days))
     closest_dt, closest_str = expiries[0]
     
@@ -46,7 +46,7 @@ def calculate_approx_delta(spot, strike, iv, dte):
     delta = norm.cdf(d1)
     return float(delta)
 
-def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4):
+def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, num_contracts=1):
     """Scans the chain and finds the strike closest to a user probability (Delta) target and week structure."""
     stock = yf.Ticker(ticker)
     
@@ -101,14 +101,15 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4):
         best_match_idx = otm_calls['delta_distance'].idxmin()
         recommendation = otm_calls.loc[best_match_idx].to_dict()
         
-        # Upfront cash premium collected per 1 contract (Bid * 100 shares)
-        recommendation['total_premium'] = recommendation['bid'] * 100.0
+        # 🌟 UPDATED CALCULATION: Scales premium collected dynamically based on the contracts input
+        recommendation['total_premium'] = recommendation['bid'] * 100.0 * num_contracts
         
         # Add metadata variables to recommendation dictionary
         recommendation['expiry'] = expiry_date
         recommendation['dte'] = dte
         recommendation['spot_price'] = spot_price
         recommendation['target_prob'] = target_prob
+        recommendation['num_contracts'] = num_contracts
         
         # Clean dataframe up for presentation sorting
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
