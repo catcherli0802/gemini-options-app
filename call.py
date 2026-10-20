@@ -12,7 +12,6 @@ def find_target_expiry(stock, target_days=28):
     today = datetime.now()
     target_date = today + timedelta(days=target_days)
     
-    # Parse available dates and find the closest match
     expiries = []
     for opt_date in stock.options:
         try:
@@ -24,13 +23,11 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    # Sort by absolute distance to our target date
     expiries.sort(key=lambda x: abs((x[0] - target_date).days))
     closest_dt, closest_str = expiries[0]
     
-    # Calculate exact Days to Expiration (DTE)
     dte = (closest_dt - today).days
-    return closest_str, max(dte, 1) # Ensure DTE is at least 1 to avoid division by zero
+    return closest_str, max(dte, 1)
 
 def calculate_approx_delta(spot, strike, iv, dte):
     """Approximates the option Delta using standard Black-Scholes d1 logic."""
@@ -38,23 +35,49 @@ def calculate_approx_delta(spot, strike, iv, dte):
         return 0.0
     
     t = dte / 365.0  # Time in years
-    # Standard risk-free rate approximation (e.g., 4.5% or 0.045)
-    r = 0.045 
+    r = 0.045 # Standard risk-free rate approximation (4.5%)
     
-    # Black-Scholes d1 formula component
     d1 = (np.log(spot / strike) + (r + (iv ** 2) / 2.0) * t) / (iv * np.sqrt(t))
     delta = norm.cdf(d1)
     return float(delta)
 
-def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, num_contracts=1):
-    """Scans the chain and finds the strike closest to a user probability (Delta) target and week structure."""
-    stock = yf.Ticker(ticker)
+def black_scholes_call_price(spot, strike, iv, dte):
+    """Calculates the theoretical Black-Scholes price of a Call Option."""
+    if spot <= 0 or strike <= 0 or iv <= 0:
+        return 0.0
+    if dte <= 0:
+        return max(0.0, spot - strike) # Intrinsic value at expiration
+        
+    t = dte / 365.0
+    r = 0.045
     
-    # Convert inputs to calculation units
+    d1 = (np.log(spot / strike) + (r + (iv ** 2) / 2.0) * t) / (iv * np.sqrt(t))
+    d2 = d1 - iv * np.sqrt(t)
+    
+    call_price = spot * norm.cdf(d1) - strike * np.exp(-r * t) * norm.cdf(d2)
+    return float(call_price)
+
+def get_time_decay_curve(spot, strike, iv, max_dte):
+    """Generates a data matrix tracking call price progression as DTE approaches 0."""
+    days_remaining = list(range(int(max_dte), -1, -1))
+    prices = []
+    
+    for dte in days_remaining:
+        p = black_scholes_call_price(spot, strike, iv, dte)
+        prices.append(p)
+        
+    df = pd.DataFrame({
+        "Days to Expiration": days_remaining,
+        "Theoretical Option Value": prices
+    })
+    return df.set_index("Days to Expiration")
+
+def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, num_contracts=1):
+    """Scans the chain and finds the strike closest to a user probability (Delta) target."""
+    stock = yf.Ticker(ticker)
     target_delta = target_prob / 100.0
     target_days = target_weeks * 7
     
-    # 1. Safely extract current spot price
     try:
         spot_price = stock.fast_info.get('lastPrice', 0.0)
     except Exception:
@@ -66,29 +89,24 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
     if spot_price <= 0:
         return None, f"Invalid spot price retrieved for {ticker}.", pd.DataFrame()
 
-    # 2. Locate expiration closest to requested target weeks
     expiry_date, dte = find_target_expiry(stock, target_days=target_days)
     if not expiry_date:
         return None, "No valid options expiration dates found.", pd.DataFrame()
         
     try:
-        # 3. Pull the exact call data matrix
         chain = stock.option_chain(expiry_date)
         calls = chain.calls.copy()
         
         if calls.empty:
             return None, f"Option chain matrix empty for expiry {expiry_date}.", pd.DataFrame()
             
-        # Clean data columns
         cols = ['strike', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']
         calls = calls[cols].dropna()
         
-        # Filter for Out-Of-The-Money (OTM) options only
         otm_calls = calls[calls['strike'] > spot_price].copy()
         if otm_calls.empty:
-            otm_calls = calls.copy() # Fallback to all calls if none are strictly OTM
+            otm_calls = calls.copy()
             
-        # 4. Calculate approximate Delta for every option in the matrix
         deltas = []
         for _, row in otm_calls.iterrows():
             d = calculate_approx_delta(spot_price, row['strike'], row['impliedVolatility'], dte)
@@ -96,22 +114,17 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
             
         otm_calls['calculated_delta'] = deltas
         
-        # 5. Locate the contract closest to a user probability target (target_delta)
         otm_calls['delta_distance'] = (otm_calls['calculated_delta'] - target_delta).abs()
         best_match_idx = otm_calls['delta_distance'].idxmin()
         recommendation = otm_calls.loc[best_match_idx].to_dict()
         
-        # 🌟 UPDATED CALCULATION: Scales premium collected dynamically based on the contracts input
         recommendation['total_premium'] = recommendation['bid'] * 100.0 * num_contracts
-        
-        # Add metadata variables to recommendation dictionary
         recommendation['expiry'] = expiry_date
         recommendation['dte'] = dte
         recommendation['spot_price'] = spot_price
         recommendation['target_prob'] = target_prob
         recommendation['num_contracts'] = num_contracts
         
-        # Clean dataframe up for presentation sorting
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
             columns={'calculated_delta': 'Estimated Delta'}
         ).head(15)
