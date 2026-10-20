@@ -1,76 +1,113 @@
 import yfinance as yf
 import pandas as pd
-from google import genai
+import numpy as np
+from scipy.stats import norm
+from datetime import datetime, timedelta
 
-def get_option_chain_data(ticker):
-    """Fetches stock spot price and clean option tables using yfinance with safety fallbacks."""
+def find_target_expiry(stock, target_days=28):
+    """Finds the market expiration date closest to the target days (4 weeks)."""
+    if not hasattr(stock, 'options') or not stock.options:
+        return None, 0
+        
+    today = datetime.now()
+    target_date = today + timedelta(days=target_days)
+    
+    # Parse available dates and find the closest match
+    expiries = []
+    for opt_date in stock.options:
+        try:
+            dt = datetime.strptime(opt_date, "%Y-%m-%d")
+            expiries.append((dt, opt_date))
+        except ValueError:
+            continue
+            
+    if not expiries:
+        return None, 0
+        
+    # Sort by absolute distance to our target date
+    expiries.sort(key=lambda x: abs((x[0] - target_date).days))
+    closest_dt, closest_str = expiries[0]
+    
+    # Calculate exact Days to Expiration (DTE)
+    dte = (closest_dt - today).days
+    return closest_str, max(dte, 1) # Ensure DTE is at least 1 to avoid division by zero
+
+def calculate_approx_delta(spot, strike, iv, dte):
+    """Approximates the option Delta using standard Black-Scholes d1 logic."""
+    if spot <= 0 or strike <= 0 or iv <= 0 or dte <= 0:
+        return 0.0
+    
+    t = dte / 365.0  # Time in years
+    # Standard risk-free rate approximation (e.g., 4.5% or 0.045)
+    r = 0.045 
+    
+    # Black-Scholes d1 formula component
+    d1 = (np.log(spot / strike) + (r + (iv ** 2) / 2.0) * t) / (iv * np.sqrt(t))
+    delta = norm.cdf(d1)
+    return float(delta)
+
+def get_covered_call_recommendation(ticker):
+    """Scans the 4-week chain and finds the strike closest to a 30% probability (0.30 Delta)."""
     stock = yf.Ticker(ticker)
     
-    # Safely extract the current spot price
+    # 1. Safely extract current spot price
     try:
         spot_price = stock.fast_info.get('lastPrice', 0.0)
     except Exception:
         try:
-            # Secondary fallback for stock price
             spot_price = stock.history(period="1d")['Close'].iloc[-1]
         except Exception:
-            spot_price = 0.0
-        
-    # Check if options are returned by the scraper
-    if not hasattr(stock, 'options') or not stock.options:
-        return pd.DataFrame(), pd.DataFrame(), spot_price
+            return None, "Error retrieving spot price.", pd.DataFrame()
+            
+    if spot_price <= 0:
+        return None, f"Invalid spot price retrieved for {ticker}.", pd.DataFrame()
+
+    # 2. Locate expiration closest to 4 weeks (28 days)
+    expiry_date, dte = find_target_expiry(stock, target_days=28)
+    if not expiry_date:
+        return None, "No valid options expiration dates found.", pd.DataFrame()
         
     try:
-        # Pick the absolute nearest available expiration date string safely
-        available_expiries = list(stock.options)
-        if len(available_expiries) == 0:
-            return pd.DataFrame(), pd.DataFrame(), spot_price
+        # 3. Pull the exact call data matrix
+        chain = stock.option_chain(expiry_date)
+        calls = chain.calls.copy()
+        
+        if calls.empty:
+            return None, f"Option chain matrix empty for expiry {expiry_date}.", pd.DataFrame()
             
-        nearest_expiry = available_expiries[0]
-        chain = stock.option_chain(nearest_expiry)
-        
-        # Filter for the most critical metrics
+        # Clean data columns
         cols = ['strike', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']
+        calls = calls[cols].dropna()
         
-        # Process Calls safely
-        calls = chain.calls[cols].dropna().head(10) if not chain.calls.empty else pd.DataFrame()
-        # Process Puts safely
-        puts = chain.puts[cols].dropna().head(10) if not chain.puts.empty else pd.DataFrame()
+        # Filter for Out-Of-The-Money (OTM) options only
+        otm_calls = calls[calls['strike'] > spot_price].copy()
+        if otm_calls.empty:
+            otm_calls = calls.copy() # Fallback to all calls if none are strictly OTM
+            
+        # 4. Calculate approximate Delta for every option in the matrix
+        deltas = []
+        for _, row in otm_calls.iterrows():
+            d = calculate_approx_delta(spot_price, row['strike'], row['impliedVolatility'], dte)
+            deltas.append(d)
+            
+        otm_calls['calculated_delta'] = deltas
         
-        return calls, puts, spot_price
+        # 5. Locate the contract closest to a 30% probability target (0.30 Delta)
+        otm_calls['delta_distance'] = (otm_calls['calculated_delta'] - 0.30).abs()
+        best_match_idx = otm_calls['delta_distance'].idxmin()
+        recommendation = otm_calls.loc[best_match_idx].to_dict()
+        
+        # Add metadata variables to recommendation dictionary
+        recommendation['expiry'] = expiry_date
+        recommendation['dte'] = dte
+        recommendation['spot_price'] = spot_price
+        
+        # Clean dataframe up for presentation sorting
+        display_df = otm_calls.drop(columns=['delta_distance']).rename(
+            columns={'calculated_delta': 'Estimated Delta'}
+        ).head(15)
+        
+        return recommendation, "Success", display_df
         
     except Exception as e:
-        # Prevent the whole web app from crashing on a scraper KeyError/ValueError
-        print(f"Data scraping handling error: {str(e)}")
-        return pd.DataFrame(), pd.DataFrame(), spot_price
-
-def analyze_with_gemini(ticker, spot_price, calls_df, puts_df, api_key):
-    """Packages data into a strict financial prompt and executes a Gemini query."""
-    # Initialize the modern official Google GenAI client
-    client = genai.Client(api_key=api_key)
-    
-    # Provide context if data tables are currently empty due to scrape failure
-    calls_str = calls_df.to_string() if not calls_df.empty else "No current Call data retrieved from source."
-    puts_str = puts_df.to_string() if not puts_df.empty else "No current Put data retrieved from source."
-    
-    prompt = f"""
-    You are a professional quantitative derivative analyst. Analyze this options market environment for {ticker}.
-    Current Stock Spot Price: ${spot_price:.2f}
-    
-    Top Calls Matrix:
-    {calls_str}
-    
-    Top Puts Matrix:
-    {puts_str}
-    
-    Provide a professional summary:
-    1. If data is present, evaluate key near-term support/resistance walls and implied volatility nodes.
-    2. If the data blocks are empty, briefly explain to the user the risks of relying on unofficial web scrapers for real-time market pipelines and what alternatives exist.
-    """
-    
-    # 🌟 Fixed: Updated to the live, supported gemini-3.8-flash model
-    response = client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=prompt,
-    )
-    return response.text
+        return None, f"Calculation execution error: {str(e)}", pd.DataFrame()
