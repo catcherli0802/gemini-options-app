@@ -86,7 +86,6 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
     target_delta = target_prob / 100.0
     target_days = target_weeks * 7
     
-    # Unpack the interest decimal and the literal asset text label
     r, rate_label = get_current_risk_free_rate(target_weeks=target_weeks)
     
     try:
@@ -114,6 +113,12 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         cols = ['strike', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']
         calls = calls[cols].dropna()
         
+        # 🌟 FIX 1: Filter out inactive rows, zero bids, or junk stale IV entries (< 10% IV)
+        calls = calls[(calls['impliedVolatility'] > 0.10) & (calls['bid'] > 0.05)]
+        
+        if calls.empty:
+            return None, f"No liquid option contracts remaining after sanity filtering.", pd.DataFrame()
+        
         otm_calls = calls[calls['strike'] > spot_price].copy()
         if otm_calls.empty:
             otm_calls = calls.copy()
@@ -136,7 +141,7 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         recommendation['target_prob'] = target_prob
         recommendation['num_contracts'] = num_contracts
         recommendation['risk_free_rate'] = r
-        recommendation['rate_label'] = rate_label # <-- Packaged to forward up to UI layer
+        recommendation['rate_label'] = rate_label
         
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
             columns={'calculated_delta': 'Estimated Delta'}
