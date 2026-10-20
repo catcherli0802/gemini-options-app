@@ -42,7 +42,14 @@ if ticker:
             st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}")
         with m_col6:
             rate_percentage = rec['risk_free_rate'] * 100
-            st.metric(label="Risk-Free Rate (r)", value=f"{rate_percentage:.3f}%", help="Dynamic macro baseline mapped from the US Treasury Curve based on your options duration timeline.")
+            # FIX: Displays the exact duration source label underneath the interest rate percentage card
+            st.metric(
+                label="Risk-Free Rate (r)", 
+                value=f"{rate_percentage:.3f}%", 
+                delta=rec['rate_label'], 
+                delta_color="neutral",
+                help="Live macroeconomic baseline tracking corresponding asset lengths across the US sovereign yield curve."
+            )
             
         # 2. Highlighted Recommendation Breakdown Box
         st.markdown("---")
@@ -55,7 +62,7 @@ if ticker:
         * Sell **{rec['num_contracts']}** of the **{rec['expiry']}** expiration **${rec['strike']:.2f} Call Option** contracts.
         * **Current Market Premium:** Bid: **${rec['bid']:.2f}** | Ask: **${rec['ask']:.2f}**
         * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly.
-        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%) using a baseline interest rate of {rate_percentage:.3f}%*.
+        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%) using a {rec['rate_label']} benchmark yield of {rate_percentage:.3f}%*.
         """)
         
         # 3. Dynamic Time Decay Visual Graph
@@ -67,7 +74,7 @@ if ticker:
             strike=rec['strike'], 
             iv=rec['impliedVolatility'], 
             max_dte=rec['dte'],
-            target_weeks=target_weeks # <-- Syncs the timeline parameter with the curve math
+            target_weeks=target_weeks
         )
         
         st.line_chart(decay_df)
