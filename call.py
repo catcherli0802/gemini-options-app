@@ -110,11 +110,15 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         if calls.empty:
             return None, f"Option chain matrix empty for expiry {expiry_date}.", pd.DataFrame()
             
-        cols = ['strike', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']
+        # Include lastPrice to handle illiquid fallback calculations
+        cols = ['strike', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility', 'lastPrice']
         calls = calls[cols].dropna()
         
-        # 🌟 FIX 1: Filter out inactive rows, zero bids, or junk stale IV entries (< 10% IV)
-        calls = calls[(calls['impliedVolatility'] > 0.10) & (calls['bid'] > 0.05)]
+        # 🌟 FIX: Updated liquidity safety rule. Uses lastPrice if current real-time Bid is zero.
+        calls = calls[
+            (calls['impliedVolatility'] > 0.02) & 
+            ((calls['bid'] > 0.05) | (calls['lastPrice'] > 0.05))
+        ]
         
         if calls.empty:
             return None, f"No liquid option contracts remaining after sanity filtering.", pd.DataFrame()
@@ -134,7 +138,10 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         best_match_idx = otm_calls['delta_distance'].idxmin()
         recommendation = otm_calls.loc[best_match_idx].to_dict()
         
-        recommendation['total_premium'] = recommendation['bid'] * 100.0 * num_contracts
+        # If bid is zero, fallback to the last traded price to estimate premium income accurately
+        execution_premium = recommendation['bid'] if recommendation['bid'] > 0 else recommendation['lastPrice']
+        recommendation['total_premium'] = execution_premium * 100.0 * num_contracts
+        
         recommendation['expiry'] = expiry_date
         recommendation['dte'] = dte
         recommendation['spot_price'] = spot_price
