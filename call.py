@@ -4,7 +4,7 @@ import numpy as np
 from scipy.stats import norm
 from datetime import datetime, timedelta
 
-# Import your new live yield retrieval microservice
+# Import your live yield retrieval microservice
 from rates import get_current_risk_free_rate
 
 def find_target_expiry(stock, target_days=28):
@@ -26,8 +26,9 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    expiries.sort(key=lambda x: abs((x - target_date).days))
-    closest_dt, closest_str = expiries
+    # FIX: Extract the datetime object from the first index of the tuple (x[0])
+    expiries.sort(key=lambda x: abs((x[0] - target_date).days))
+    closest_dt, closest_str = expiries[0]
     
     dte = (closest_dt - today).days
     return closest_str, max(dte, 1)
