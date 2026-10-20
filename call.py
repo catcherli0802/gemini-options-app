@@ -58,19 +58,29 @@ def black_scholes_call_price(spot, strike, iv, dte):
     return float(call_price)
 
 def get_time_decay_curve(spot, strike, iv, max_dte):
-    """Generates a data matrix tracking call price progression as DTE approaches 0."""
-    days_remaining = list(range(int(max_dte), -1, -1))
+    """Generates a data matrix tracking call price progression as actual calendar dates approach expiration."""
+    today = datetime.now()
+    
+    # Generate sequential chronological steps from max_dte down to 0
+    days_to_expiration = list(range(int(max_dte), -1, -1))
+    
+    calendar_dates = []
     prices = []
     
-    for dte in days_remaining:
+    for dte in days_to_expiration:
+        # Map DTE down to an incremental forward date from today
+        days_passed = int(max_dte) - dte
+        future_date = today + timedelta(days=days_passed)
+        calendar_dates.append(future_date.strftime("%Y-%m-%d"))
+        
         p = black_scholes_call_price(spot, strike, iv, dte)
         prices.append(p)
         
     df = pd.DataFrame({
-        "Days to Expiration": days_remaining,
+        "Timeline Date": calendar_dates,
         "Theoretical Option Value": prices
     })
-    return df.set_index("Days to Expiration")
+    return df.set_index("Timeline Date")
 
 def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, num_contracts=1):
     """Scans the chain and finds the strike closest to a user probability (Delta) target."""
