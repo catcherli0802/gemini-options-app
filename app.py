@@ -5,7 +5,7 @@ from call import get_covered_call_recommendation
 
 # Configure page visual width
 st.set_page_config(page_title="Covered Call Engine", layout="wide")
-st.title("📈 Covered Call Strategy Assistant")
+st.title("📈 AI Trading: Covered Call Strategy")
 st.write("Find Out-of-the-Money calls carrying an approximate user-defined chance of expiring In-The-Money (Delta) in your selected timeframe.")
 
 # User entry layout - Defaults to NVDA
@@ -14,7 +14,7 @@ ticker = st.text_input("Enter Asset Ticker Symbol", value="NVDA").upper().strip(
 # 🌟 CHANGED: Reconfigured input rows to fit 3 side-by-side controls
 col_input1, col_input2, col_input3 = st.columns(3)
 with col_input1:
-    target_prob = st.slider("Target ITM Probability / Delta (%)", min_value=5, max_value=95, value=30, step=1, help="Probability that the option will expire in-the-money.")
+    target_prob = st.slider("Target ITM Probability / Delta (%)", min_value=5, max_value=95, value=25, step=1, help="Probability that the option will expire in-the-money.")
 with col_input2:
     target_weeks = st.number_input("Target Expiry Timeline (Weeks)", min_value=1, max_value=52, value=4, step=1, help="If the specified number of weeks does not have an exact expiration date, the closest available date is chosen automatically.")
 with col_input3:
