@@ -52,14 +52,13 @@ if ticker:
         * Sell **{rec['num_contracts']}** of the **{rec['expiry']}** expiration **${rec['strike']:.2f} Call Option** contracts.
         * **Current Market Premium:** Bid: **${rec['bid']:.2f}** | Ask: **${rec['ask']:.2f}**
         * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly.
-        * **Mathematical Delta Verification:** **{rec['estimated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
+        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
         """)
         
-        # 🌟 NEW: Dynamic Time Decay Visual Graph
+        # 3. Dynamic Time Decay Visual Graph
         st.markdown("### 📉 Theoretical Option Value vs. Time to Expiration")
         st.write("This interactive chart maps how the recommended option contract's premium drops as time decays, assuming the stock price remains constant.")
         
-        # Build the chart dataset out of the selected contract's structural features
         decay_df = get_time_decay_curve(
             spot=rec['spot_price'], 
             strike=rec['strike'], 
@@ -67,10 +66,9 @@ if ticker:
             max_dte=rec['dte']
         )
         
-        # Display the curve natively using st.line_chart
         st.line_chart(decay_df)
         
-        # 3. Comprehensive Data Context Grid Table
+        # 4. Comprehensive Data Context Grid Table
         st.markdown("### 🔍 Scanned Options Chain Context Table")
         st.write("This table shows the available options contracts surrounding your recommendation target, sorted by strike price.")
         
