@@ -26,7 +26,7 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    expiries.sort(key=lambda x: x[0])
+    expiries.sort(key=lambda x: x)
     closest_pair = min(expiries, key=lambda x: abs((x[0] - target_date).days))
     closest_dt, closest_str = closest_pair
     
@@ -60,8 +60,7 @@ def black_scholes_call_price(spot, strike, iv, dte, r):
 def get_time_decay_curve(spot, strike, iv, max_dte, target_weeks=4):
     """Generates a data matrix tracking call price progression using the dynamic market rate."""
     today = datetime.now()
-    # Pass target weeks parameter downward to preserve matching index yield
-    r = get_current_risk_free_rate(target_weeks=target_weeks)
+    r, _ = get_current_risk_free_rate(target_weeks=target_weeks)
     
     days_to_expiration = list(range(int(max_dte), -1, -1))
     calendar_dates = []
@@ -87,8 +86,8 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
     target_delta = target_prob / 100.0
     target_days = target_weeks * 7
     
-    # FIX: Pass the target_weeks parameter directly into your rate module
-    r = get_current_risk_free_rate(target_weeks=target_weeks)
+    # Unpack the interest decimal and the literal asset text label
+    r, rate_label = get_current_risk_free_rate(target_weeks=target_weeks)
     
     try:
         spot_price = stock.fast_info.get('lastPrice', 0.0)
@@ -137,6 +136,7 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
         recommendation['target_prob'] = target_prob
         recommendation['num_contracts'] = num_contracts
         recommendation['risk_free_rate'] = r
+        recommendation['rate_label'] = rate_label # <-- Packaged to forward up to UI layer
         
         display_df = otm_calls.drop(columns=['delta_distance']).rename(
             columns={'calculated_delta': 'Estimated Delta'}
