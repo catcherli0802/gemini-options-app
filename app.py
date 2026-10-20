@@ -1,33 +1,25 @@
 import streamlit as st
 import pandas as pd
-# Import your calculations cleanly from call.py
-from call import get_covered_call_recommendation
+from call import get_covered_call_recommendation, get_time_decay_curve
 
-# Configure page visual width
 st.set_page_config(page_title="Covered Call Engine", layout="wide")
 st.title("📈 AI Trading: Covered Call Strategy")
 st.write("Find Out-of-the-Money calls carrying an approximate user-defined chance of expiring In-The-Money (Delta) in your selected timeframe.")
 
-# User entry layout - Defaults to NVDA
 ticker = st.text_input("Enter Asset Ticker Symbol", value="NVDA").upper().strip()
 
-# 🌟 CHANGED: Reconfigured input rows to fit 3 side-by-side controls
 col_input1, col_input2, col_input3 = st.columns(3)
 with col_input1:
-    target_prob = st.slider("Target ITM Probability / Delta (%)", min_value=5, max_value=95, value=25, step=1, help="Probability that the option will expire in-the-money.")
+    target_prob = st.slider("Target ITM Probability / Delta (%)", min_value=5, max_value=95, value=25, step=1)
 with col_input2:
-    target_weeks = st.number_input("Target Expiry Timeline (Weeks)", min_value=1, max_value=52, value=4, step=1, help="If the specified number of weeks does not have an exact expiration date, the closest available date is chosen automatically.")
+    target_weeks = st.number_input("Target Expiry Timeline (Weeks)", min_value=1, max_value=52, value=4, step=1)
 with col_input3:
-    # 🌟 NEW USER CONTROL: Input for sizing standard contract entries
-    num_contracts = st.number_input("Number of Contracts to Sell", min_value=1, max_value=1000, value=1, step=1, help="Scales your total premium metrics. 1 contract = 100 shares.")
+    num_contracts = st.number_input("Number of Contracts to Sell", min_value=1, max_value=1000, value=1, step=1)
 
-# Add manual button trigger alongside the automatic state change conditions
 button_clicked = st.button("Generate Strategy Recommendation")
 
-# DUAL TRIGGER LOOP: Triggers if the button is explicitly pressed OR if any parameter values shift
 if ticker:
     with st.spinner(f"Analyzing option matrix structures for {ticker}..."):
-        # Pass the number of contracts forward to the calculation pipeline
         rec, status_msg, chain_df = get_covered_call_recommendation(ticker, target_prob=target_prob, target_weeks=target_weeks, num_contracts=num_contracts)
         
     if rec is None:
@@ -47,24 +39,36 @@ if ticker:
             iv_percentage = rec['impliedVolatility'] * 100
             st.metric(label="Target Implied Volatility (IV)", value=f"{iv_percentage:.1f}%")
         with m_col5:
-            # 🌟 SCALED KPI CARD: Updates cash calculation based on your contracts sizing input
-            st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}", help="Calculated as (Option Bid Price * 100) * Number of Contracts.")
+            st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}")
             
         # 2. Highlighted Recommendation Breakdown Box
         st.markdown("---")
         st.subheader("🎯 Strategy Recommendation Summary")
-        
-        # Calculate shares required for transparency brief
         required_shares = rec['num_contracts'] * 100
         
         st.success(f"""
         **Covered Call Action Strategy Plan for {ticker}:**
-        * Buy or hold **{required_shares:,}** shares of underlying stock **{ticker}** at **${rec['spot_price']:.2f}** (covers your position).
+        * Buy or hold **{required_shares:,}** shares of underlying stock **{ticker}** at **${rec['spot_price']:.2f}**.
         * Sell **{rec['num_contracts']}** of the **{rec['expiry']}** expiration **${rec['strike']:.2f} Call Option** contracts.
         * **Current Market Premium:** Bid: **${rec['bid']:.2f}** | Ask: **${rec['ask']:.2f}**
-        * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly in premium cash income from this block position.
-        * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
+        * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly.
+        * **Mathematical Delta Verification:** **{rec['estimated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
         """)
+        
+        # 🌟 NEW: Dynamic Time Decay Visual Graph
+        st.markdown("### 📉 Theoretical Option Value vs. Time to Expiration")
+        st.write("This interactive chart maps how the recommended option contract's premium drops as time decays, assuming the stock price remains constant.")
+        
+        # Build the chart dataset out of the selected contract's structural features
+        decay_df = get_time_decay_curve(
+            spot=rec['spot_price'], 
+            strike=rec['strike'], 
+            iv=rec['impliedVolatility'], 
+            max_dte=rec['dte']
+        )
+        
+        # Display the curve natively using st.line_chart
+        st.line_chart(decay_df)
         
         # 3. Comprehensive Data Context Grid Table
         st.markdown("### 🔍 Scanned Options Chain Context Table")
