@@ -4,6 +4,9 @@ import numpy as np
 from scipy.stats import norm
 from datetime import datetime, timedelta
 
+# Import your new live yield retrieval microservice
+from rates import get_current_risk_free_rate
+
 def find_target_expiry(stock, target_days=28):
     """Finds the market expiration date closest to the target days."""
     if not hasattr(stock, 'options') or not stock.options:
@@ -23,33 +26,31 @@ def find_target_expiry(stock, target_days=28):
     if not expiries:
         return None, 0
         
-    expiries.sort(key=lambda x: abs((x[0] - target_date).days))
-    closest_dt, closest_str = expiries[0]
+    expiries.sort(key=lambda x: abs((x - target_date).days))
+    closest_dt, closest_str = expiries
     
     dte = (closest_dt - today).days
     return closest_str, max(dte, 1)
 
-def calculate_approx_delta(spot, strike, iv, dte):
-    """Approximates the option Delta using standard Black-Scholes d1 logic."""
+def calculate_approx_delta(spot, strike, iv, dte, r):
+    """Approximates the option Delta using standard Black-Scholes d1 logic with live rates."""
     if spot <= 0 or strike <= 0 or iv <= 0 or dte <= 0:
         return 0.0
     
     t = dte / 365.0  # Time in years
-    r = 0.045 # Standard risk-free rate approximation (4.5%)
     
     d1 = (np.log(spot / strike) + (r + (iv ** 2) / 2.0) * t) / (iv * np.sqrt(t))
     delta = norm.cdf(d1)
     return float(delta)
 
-def black_scholes_call_price(spot, strike, iv, dte):
-    """Calculates the theoretical Black-Scholes price of a Call Option."""
+def black_scholes_call_price(spot, strike, iv, dte, r):
+    """Calculates the theoretical Black-Scholes price of a Call Option using live rates."""
     if spot <= 0 or strike <= 0 or iv <= 0:
         return 0.0
     if dte <= 0:
         return max(0.0, spot - strike) # Intrinsic value at expiration
         
     t = dte / 365.0
-    r = 0.045
     
     d1 = (np.log(spot / strike) + (r + (iv ** 2) / 2.0) * t) / (iv * np.sqrt(t))
     d2 = d1 - iv * np.sqrt(t)
@@ -58,22 +59,20 @@ def black_scholes_call_price(spot, strike, iv, dte):
     return float(call_price)
 
 def get_time_decay_curve(spot, strike, iv, max_dte):
-    """Generates a data matrix tracking call price progression as actual calendar dates approach expiration."""
+    """Generates a data matrix tracking call price progression using the dynamic market rate."""
     today = datetime.now()
+    r = get_current_risk_free_rate() # Fetch current rate once for graph compilation
     
-    # Generate sequential chronological steps from max_dte down to 0
     days_to_expiration = list(range(int(max_dte), -1, -1))
-    
     calendar_dates = []
     prices = []
     
     for dte in days_to_expiration:
-        # Map DTE down to an incremental forward date from today
         days_passed = int(max_dte) - dte
         future_date = today + timedelta(days=days_passed)
         calendar_dates.append(future_date.strftime("%Y-%m-%d"))
         
-        p = black_scholes_call_price(spot, strike, iv, dte)
+        p = black_scholes_call_price(spot, strike, iv, dte, r)
         prices.append(p)
         
     df = pd.DataFrame({
@@ -87,6 +86,9 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
     stock = yf.Ticker(ticker)
     target_delta = target_prob / 100.0
     target_days = target_weeks * 7
+    
+    # Extract live macro yield benchmark from our new module
+    r = get_current_risk_free_rate()
     
     try:
         spot_price = stock.fast_info.get('lastPrice', 0.0)
@@ -119,7 +121,8 @@ def get_covered_call_recommendation(ticker, target_prob=30.0, target_weeks=4, nu
             
         deltas = []
         for _, row in otm_calls.iterrows():
-            d = calculate_approx_delta(spot_price, row['strike'], row['impliedVolatility'], dte)
+            # Pass the extracted live risk free rate into the loop calculations
+            d = calculate_approx_delta(spot_price, row['strike'], row['impliedVolatility'], dte, r)
             deltas.append(d)
             
         otm_calls['calculated_delta'] = deltas
