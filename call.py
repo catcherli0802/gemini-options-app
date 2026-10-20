@@ -46,6 +46,7 @@ def get_option_chain_data(ticker):
 
 def analyze_with_gemini(ticker, spot_price, calls_df, puts_df, api_key):
     """Packages data into a strict financial prompt and executes a Gemini query."""
+    # Initialize the modern official Google GenAI client
     client = genai.Client(api_key=api_key)
     
     # Provide context if data tables are currently empty due to scrape failure
@@ -67,8 +68,9 @@ def analyze_with_gemini(ticker, spot_price, calls_df, puts_df, api_key):
     2. If the data blocks are empty, briefly explain to the user the risks of relying on unofficial web scrapers for real-time market pipelines and what alternatives exist.
     """
     
+    # 🌟 Fixed: Updated to the live, supported gemini-3.8-flash model
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-3.8-flash',
         contents=prompt,
     )
     return response.text
