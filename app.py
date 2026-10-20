@@ -21,7 +21,7 @@ with col_input2:
 # Add manual button trigger alongside the automatic state change conditions
 button_clicked = st.button("Generate Strategy Recommendation")
 
-# 🔄 DUAL TRIGGER LOOP: Triggers if the button is explicitly pressed OR if any parameter values shift
+# DUAL TRIGGER LOOP: Triggers if the button is explicitly pressed OR if any parameter values shift
 if ticker:
     with st.spinner(f"Analyzing option matrix structures for {ticker}..."):
         # Pass parameters straight to backend calculation engine
@@ -32,7 +32,8 @@ if ticker:
     else:
         # 1. Render Top Level Metric Dashboard Cards
         st.markdown("### 📊 Market Layout Overview")
-        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        # 🌟 CHANGED: Expanded to 5 column slots to perfectly incorporate Premium metric
+        m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
         
         with m_col1:
             st.metric(label=f"Current {ticker} Spot Price", value=f"${rec['spot_price']:.2f}")
@@ -44,6 +45,9 @@ if ticker:
             # Format IV into a human-readable percentage scale
             iv_percentage = rec['impliedVolatility'] * 100
             st.metric(label="Target Implied Volatility (IV)", value=f"{iv_percentage:.1f}%")
+        with m_col5:
+            # 🌟 NEW KPI: Upfront gross cash revenue generated per contract position 
+            st.metric(label="Est. Premium Income", value=f"${rec['total_premium']:.2f}", help="Calculated as Option Bid Price * 100 shares per standard option contract position.")
             
         # 2. Highlighted Recommendation Breakdown Box
         st.markdown("---")
@@ -54,6 +58,7 @@ if ticker:
         * Buy or hold 100 shares of underlying stock **{ticker}** at **${rec['spot_price']:.2f}**.
         * Sell the **{rec['expiry']}** expiration **${rec['strike']:.2f} Call Option**.
         * **Current Market Premium:** Bid: **${rec['bid']:.2f}** | Ask: **${rec['ask']:.2f}**
+        * 💰 **Upfront Cash Collected:** You will make **${rec['total_premium']:.2f}** instantly in premium cash income per contract position.
         * **Mathematical Delta Verification:** **{rec['calculated_delta']:.3f}** *(Targeted probability setup: {rec['target_prob']:.1f}%)*.
         """)
         
